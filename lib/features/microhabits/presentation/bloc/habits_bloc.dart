@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/usecases/usecase.dart';
 import '../../../../core/utils/logger_service.dart';
 import '../../domain/entities/habit_entity.dart';
+import '../../domain/entities/habit_category_entity.dart';
 import '../../domain/usecases/get_user_habits_usecase.dart';
 import '../../domain/usecases/create_habit_usecase.dart';
 import '../../domain/usecases/complete_habit_usecase.dart';
@@ -49,6 +50,13 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
 
     LoggerService.info('Refrescando hábitos del usuario');
 
+    // 🔄 LIMPIAR PROGRESO TEMPORAL DEL DÍA ANTERIOR (si es un nuevo día)
+    final cleanupResult = await habitsRepository.cleanupOldTemporaryProgress();
+    cleanupResult.fold(
+      (failure) => LoggerService.warning('⚠️ Error al limpiar progreso antiguo: ${failure.message}'),
+      (_) => LoggerService.info('✅ Progreso temporal antiguo limpiado'),
+    );
+
     final habitsResult = await getUserHabitsUseCase(NoParams());
     final categoriesResult = await getCategoriesUseCase(NoParams());
 
@@ -65,8 +73,16 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
     final habits = habitsResult.getOrElse(() => []);
     final categories = categoriesResult.getOrElse(() => []);
 
+    // Cargar progreso temporal (sin bloquear si falla)
+    final temporaryProgressResult = await habitsRepository.getTemporaryProgress();
+    final temporaryProgress = temporaryProgressResult.getOrElse(() => <String, int>{});
+
     LoggerService.info('Hábitos refrescados: ${habits.length}');
-    emit(HabitsLoaded(habits: habits, categories: categories));
+    emit(HabitsLoaded(
+      habits: habits, 
+      categories: categories,
+      temporaryProgress: temporaryProgress,
+    ));
   }
 
   Future<void> _onCreateHabit(
@@ -105,11 +121,16 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
           final habits = habitsResult.getOrElse(() => []);
           final categories = categoriesResult.getOrElse(() => []);
           
+          // Cargar progreso temporal
+          final temporaryProgressResult = await habitsRepository.getTemporaryProgress();
+          final temporaryProgress = temporaryProgressResult.getOrElse(() => <String, int>{});
+          
           if (!emit.isDone) {
             emit(HabitCreated(
               habit: newHabit,
               allHabits: habits,
               categories: categories,
+              temporaryProgress: temporaryProgress,
             ));
           }
         } else {
@@ -125,6 +146,7 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
     UpdateHabitEvent event,
     Emitter<HabitsState> emit,
   ) async {
+    final currentState = state;
     emit(const HabitUpdating());
     LoggerService.info('Actualizando hábito: ${event.habitId}');
 
@@ -136,38 +158,44 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
       color: event.color,
       icon: event.icon,
       isActive: event.isActive,
+      dailyGoal: event.dailyGoal,
     );
 
-    result.fold(
-      (failure) {
+    await result.fold(
+      (failure) async {
         LoggerService.error('Error al actualizar hábito: ${failure.message}');
-        if (!emit.isDone) {
-          emit(HabitsError(failure.message));
-        }
+        emit(HabitsError(failure.message));
       },
       (updatedHabit) async {
         LoggerService.info('Hábito actualizado exitosamente: ${updatedHabit.name}');
         
-        // Recargar la lista completa de hábitos
-        final habitsResult = await getUserHabitsUseCase(NoParams());
-        final categoriesResult = await getCategoriesUseCase(NoParams());
+        // Obtener el estado actual para mantener las categorías y progreso temporal
+        final categories = currentState is HabitsLoaded 
+            ? currentState.categories 
+            : <HabitCategoryEntity>[];
+        final temporaryProgress = currentState is HabitsLoaded 
+            ? currentState.temporaryProgress 
+            : <String, int>{};
         
-        if (habitsResult.isRight() && categoriesResult.isRight()) {
-          final habits = habitsResult.getOrElse(() => []);
-          final categories = categoriesResult.getOrElse(() => []);
-          
-          if (!emit.isDone) {
+        // Recargar solo los hábitos (más rápido)
+        final habitsResult = await getUserHabitsUseCase(NoParams());
+        
+        habitsResult.fold(
+          (failure) {
+            LoggerService.error('Error al recargar hábitos: ${failure.message}');
+            emit(HabitsError(failure.message));
+          },
+          (habits) {
+            LoggerService.info('🚀 Emitiendo HabitUpdated para: ${updatedHabit.name}');
             emit(HabitUpdated(
               habit: updatedHabit,
               allHabits: habits,
               categories: categories,
+              temporaryProgress: temporaryProgress,
             ));
-          }
-        } else {
-          if (!emit.isDone) {
-            emit(const HabitsError('Error al recargar hábitos después de actualizar'));
-          }
-        }
+            LoggerService.info('✅ HabitUpdated emitido correctamente');
+          },
+        );
       },
     );
   }
@@ -176,56 +204,47 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
     DeleteHabitEvent event,
     Emitter<HabitsState> emit,
   ) async {
+    final currentState = state;
     emit(const HabitDeleting());
     LoggerService.info('Eliminando hábito: ${event.habitId}');
 
     final result = await habitsRepository.deleteHabit(event.habitId);
 
-    result.fold(
-      (failure) {
+    await result.fold(
+      (failure) async {
         LoggerService.error('Error al eliminar hábito: ${failure.message}');
         emit(HabitsError(failure.message));
       },
       (_) async {
         LoggerService.info('Hábito eliminado exitosamente: ${event.habitId}');
         
-        // Obtener estado actual para fallback
-        final currentState = state;
+        // Obtener el estado actual para mantener las categorías y progreso temporal
+        final categories = currentState is HabitsLoaded 
+            ? currentState.categories 
+            : <HabitCategoryEntity>[];
+        final temporaryProgress = currentState is HabitsLoaded 
+            ? currentState.temporaryProgress 
+            : <String, int>{};
         
-        // Recargar la lista completa de hábitos
+        // Recargar solo los hábitos (más rápido)
         final habitsResult = await getUserHabitsUseCase(NoParams());
-        final categoriesResult = await getCategoriesUseCase(NoParams());
         
-        if (habitsResult.isRight() && categoriesResult.isRight()) {
-          final habits = habitsResult.getOrElse(() => []);
-          final categories = categoriesResult.getOrElse(() => []);
-          
-          if (!emit.isDone) {
+        habitsResult.fold(
+          (failure) {
+            LoggerService.error('Error al recargar hábitos: ${failure.message}');
+            emit(HabitsError(failure.message));
+          },
+          (habits) {
+            LoggerService.info('🚀 Emitiendo HabitDeleted');
             emit(HabitDeleted(
               habitId: event.habitId,
               allHabits: habits,
               categories: categories,
+              temporaryProgress: temporaryProgress,
             ));
-          }
-        } else {
-          // Fallback: Si falla la recarga, usar estado anterior pero remover localmente
-          LoggerService.warning('Error al recargar después de eliminar, usando fallback');
-          
-          if (currentState is HabitsLoaded && !emit.isDone) {
-            // Remover el hábito localmente
-            final updatedHabits = currentState.habits
-                .where((h) => h.id != event.habitId)
-                .toList();
-            
-            emit(HabitsLoaded(
-              habits: updatedHabits,
-              categories: currentState.categories,
-              temporaryProgress: currentState.temporaryProgress,
-            ));
-          } else if (!emit.isDone) {
-            emit(const HabitsError('Error al eliminar hábito'));
-          }
-        }
+            LoggerService.info('✅ HabitDeleted emitido correctamente');
+          },
+        );
       },
     );
   }
@@ -234,6 +253,7 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
     CompleteHabitEvent event,
     Emitter<HabitsState> emit,
   ) async {
+    final currentState = state;
     emit(const HabitCompleting());
     LoggerService.info('Completando hábito: ${event.habitId}');
 
@@ -244,71 +264,40 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
 
     final result = await completeHabitUseCase(params);
 
-    result.fold(
-      (failure) {
+    await result.fold(
+      (failure) async {
         LoggerService.error('Error al completar hábito: ${failure.message}');
         emit(HabitsError(failure.message));
       },
       (_) async {
         LoggerService.info('Hábito completado exitosamente: ${event.habitId}');
         
-        // Obtener estado actual para fallback
-        final currentState = state;
+        // Obtener el estado actual para mantener las categorías y progreso temporal
+        final categories = currentState is HabitsLoaded 
+            ? currentState.categories 
+            : <HabitCategoryEntity>[];
+        final temporaryProgress = currentState is HabitsLoaded 
+            ? currentState.temporaryProgress 
+            : <String, int>{};
         
-        // Recargar la lista completa de hábitos para actualizar estadísticas
+        // Recargar solo los hábitos (más rápido)
         final habitsResult = await getUserHabitsUseCase(NoParams());
-        final categoriesResult = await getCategoriesUseCase(NoParams());
         
-        if (habitsResult.isRight() && categoriesResult.isRight()) {
-          final habits = habitsResult.getOrElse(() => []);
-          final categories = categoriesResult.getOrElse(() => []);
-          
-          if (!emit.isDone) {
+        habitsResult.fold(
+          (failure) {
+            LoggerService.error('Error al recargar hábitos: ${failure.message}');
+            emit(HabitsError(failure.message));
+          },
+          (habits) {
+            LoggerService.info('🚀 Emitiendo HabitCompleted');
             emit(HabitCompleted(
               habitId: event.habitId,
               allHabits: habits,
               categories: categories,
             ));
-          }
-        } else {
-          // Fallback: Si falla la recarga, usar estado anterior pero actualizar localmente
-          LoggerService.warning('Error al recargar después de completar, usando fallback');
-          
-          if (currentState is HabitsLoaded && !emit.isDone) {
-            // Actualizar el hábito localmente como completado
-            final updatedHabits = currentState.habits.map((h) {
-              if (h.id == event.habitId) {
-                // Simular que se completó (incrementar completedToday)
-                return HabitEntity(
-                  id: h.id,
-                  userId: h.userId,
-                  name: h.name,
-                  description: h.description,
-                  category: h.category,
-                  color: h.color,
-                  icon: h.icon,
-                  isActive: h.isActive,
-                  createdAt: h.createdAt,
-                  updatedAt: DateTime.now(),
-                  currentStreak: h.currentStreak + 1,
-                  longestStreak: h.longestStreak,
-                  totalCompletions: h.totalCompletions + 1,
-                  dailyGoal: h.dailyGoal,
-                  completedToday: h.completedToday + 1,
-                );
-              }
-              return h;
-            }).toList();
-            
-            emit(HabitsLoaded(
-              habits: updatedHabits,
-              categories: currentState.categories,
-              temporaryProgress: currentState.temporaryProgress,
-            ));
-          } else if (!emit.isDone) {
-            emit(const HabitsError('Error al completar hábito'));
-          }
-        }
+            LoggerService.info('✅ HabitCompleted emitido correctamente');
+          },
+        );
       },
     );
   }
@@ -317,76 +306,46 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
     UncompleteHabitEvent event,
     Emitter<HabitsState> emit,
   ) async {
+    final currentState = state;
     emit(const HabitUncompleting());
     LoggerService.info('Descompletando hábito: ${event.habitId}');
 
     final result = await habitsRepository.uncompleteHabit(event.habitId);
 
-    result.fold(
-      (failure) {
+    await result.fold(
+      (failure) async {
         LoggerService.error('Error al descompletar hábito: ${failure.message}');
         emit(HabitsError(failure.message));
       },
       (_) async {
         LoggerService.info('Hábito descompletado exitosamente: ${event.habitId}');
         
-        // Obtener estado actual para fallback
-        final currentState = state;
+        // Obtener el estado actual para mantener las categorías y progreso temporal
+        final categories = currentState is HabitsLoaded 
+            ? currentState.categories 
+            : <HabitCategoryEntity>[];
+        final temporaryProgress = currentState is HabitsLoaded 
+            ? currentState.temporaryProgress 
+            : <String, int>{};
         
-        // Recargar la lista completa de hábitos para actualizar estadísticas
+        // Recargar solo los hábitos (más rápido)
         final habitsResult = await getUserHabitsUseCase(NoParams());
-        final categoriesResult = await getCategoriesUseCase(NoParams());
         
-        if (habitsResult.isRight() && categoriesResult.isRight()) {
-          final habits = habitsResult.getOrElse(() => []);
-          final categories = categoriesResult.getOrElse(() => []);
-          
-          if (!emit.isDone) {
+        habitsResult.fold(
+          (failure) {
+            LoggerService.error('Error al recargar hábitos: ${failure.message}');
+            emit(HabitsError(failure.message));
+          },
+          (habits) {
+            LoggerService.info('🚀 Emitiendo HabitUncompleted');
             emit(HabitUncompleted(
               habitId: event.habitId,
               allHabits: habits,
               categories: categories,
             ));
-          }
-        } else {
-          // Fallback: Si falla la recarga, usar estado anterior pero actualizar localmente
-          LoggerService.warning('Error al recargar después de descompletar, usando fallback');
-          
-          if (currentState is HabitsLoaded && !emit.isDone) {
-            // Actualizar el hábito localmente como descompletado
-            final updatedHabits = currentState.habits.map((h) {
-              if (h.id == event.habitId) {
-                // Simular que se descompletó (decrementar completedToday)
-                return HabitEntity(
-                  id: h.id,
-                  userId: h.userId,
-                  name: h.name,
-                  description: h.description,
-                  category: h.category,
-                  color: h.color,
-                  icon: h.icon,
-                  isActive: h.isActive,
-                  createdAt: h.createdAt,
-                  updatedAt: DateTime.now(),
-                  currentStreak: h.currentStreak > 0 ? h.currentStreak - 1 : 0,
-                  longestStreak: h.longestStreak,
-                  totalCompletions: h.totalCompletions > 0 ? h.totalCompletions - 1 : 0,
-                  dailyGoal: h.dailyGoal,
-                  completedToday: h.completedToday > 0 ? h.completedToday - 1 : 0,
-                );
-              }
-              return h;
-            }).toList();
-            
-            emit(HabitsLoaded(
-              habits: updatedHabits,
-              categories: currentState.categories,
-              temporaryProgress: currentState.temporaryProgress,
-            ));
-          } else if (!emit.isDone) {
-            emit(const HabitsError('Error al descompletar hábito'));
-          }
-        }
+            LoggerService.info('✅ HabitUncompleted emitido correctamente');
+          },
+        );
       },
     );
   }
@@ -397,6 +356,14 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
   ) async {
     emit(const HabitsLoading());
     LoggerService.info('Cargando hábitos del usuario');
+
+    // 🔄 LIMPIAR PROGRESO TEMPORAL DEL DÍA ANTERIOR (si es un nuevo día)
+    LoggerService.info('🧹 Limpiando progreso temporal antiguo...');
+    final cleanupResult = await habitsRepository.cleanupOldTemporaryProgress();
+    cleanupResult.fold(
+      (failure) => LoggerService.warning('⚠️ Error al limpiar progreso antiguo: ${failure.message}'),
+      (_) => LoggerService.info('✅ Progreso temporal antiguo limpiado correctamente'),
+    );
 
     // Cargar hábitos y categorías en paralelo
     final habitsResult = await getUserHabitsUseCase(NoParams());
@@ -447,7 +414,11 @@ class HabitsBloc extends Bloc<HabitsEvent, HabitsState> {
           final currentState = state as HabitsLoaded;
           emit(currentState.copyWith(categories: categories));
         } else {
-          emit(HabitsLoaded(habits: const [], categories: categories));
+          emit(HabitsLoaded(
+            habits: const [], 
+            categories: categories,
+            temporaryProgress: const {},
+          ));
         }
       },
     );

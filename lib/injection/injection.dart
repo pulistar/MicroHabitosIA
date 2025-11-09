@@ -33,6 +33,13 @@ import '../features/microhabits/data/datasources/habits_remote_datasource.dart';
 import '../features/microhabits/data/repositories/habits_repository_impl.dart';
 import '../features/microhabits/domain/repositories/habits_repository.dart';
 
+// Ranking imports
+import '../features/ranking/domain/usecases/get_weekly_ranking_usecase.dart';
+import '../features/ranking/presentation/bloc/ranking_bloc.dart';
+import '../features/ranking/data/datasources/ranking_remote_datasource.dart';
+import '../features/ranking/data/repositories/ranking_repository_impl.dart';
+import '../features/ranking/domain/repositories/ranking_repository.dart';
+
 final sl = GetIt.instance;
 
 // Alias para compatibilidad
@@ -56,6 +63,10 @@ Future<void> init() async {
     () => HabitsRemoteDataSourceImpl(supabaseClient: sl<SupabaseClient>()),
   );
 
+  sl.registerLazySingleton<RankingRemoteDataSource>(
+    () => RankingRemoteDataSourceImpl(sl<SupabaseClient>()),
+  );
+
   // ==================== REPOSITORIES ====================
   sl.registerLazySingleton<AuthRepository>(
     () => AuthRepositoryImpl(sl<AuthRemoteDataSource>()),
@@ -67,6 +78,10 @@ Future<void> init() async {
 
   sl.registerLazySingleton<HabitsRepository>(
     () => HabitsRepositoryImpl(remoteDataSource: sl<HabitsRemoteDataSource>()),
+  );
+
+  sl.registerLazySingleton<RankingRepository>(
+    () => RankingRepositoryImpl(sl<RankingRemoteDataSource>()),
   );
 
   // ==================== USE CASES ====================
@@ -92,6 +107,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => CompleteHabitUseCase(sl<HabitsRepository>()));
   sl.registerLazySingleton(() => GetCategoriesUseCase(sl<HabitsRepository>()));
 
+  // Ranking
+  sl.registerLazySingleton(() => GetWeeklyRankingUseCase(sl<RankingRepository>()));
 
   // ==================== BLOCS ====================
   sl.registerFactory(() => OnboardingBloc(
@@ -122,5 +139,9 @@ Future<void> init() async {
     completeHabitUseCase: sl(),
     getCategoriesUseCase: sl(),
     habitsRepository: sl(),
+  ));
+
+  sl.registerFactory(() => RankingBloc(
+    getWeeklyRankingUseCase: sl(),
   ));
 }

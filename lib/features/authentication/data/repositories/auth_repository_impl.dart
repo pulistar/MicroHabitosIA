@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart';
 import '../../../../core/errors/failures.dart';
+import '../../../../core/errors/exceptions.dart' as app_exceptions;
 import '../../../../core/utils/logger_service.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -23,11 +24,15 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       LoggerService.endOperation('loginWithEmail');
       return Right(user);
-    } catch (e) {
+    } on app_exceptions.AuthException catch (e) {
       LoggerService.error('loginWithEmail failed', e);
-      // Pasar el mensaje real del error
-      String mensajeError = e.toString().replaceFirst('Exception: ', '');
-      return Left(AuthenticationFailure(mensajeError));
+      return Left(AuthenticationFailure(e.message));
+    } on app_exceptions.NetworkException catch (e) {
+      LoggerService.error('loginWithEmail failed - network', e);
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      LoggerService.error('loginWithEmail failed - unexpected', e);
+      return Left(ServerFailure('Error inesperado al iniciar sesión'));
     }
   }
 
@@ -38,11 +43,15 @@ class AuthRepositoryImpl implements AuthRepository {
       final user = await remoteDataSource.loginWithGoogle();
       LoggerService.endOperation('loginWithGoogle');
       return Right(user);
-    } catch (e) {
+    } on app_exceptions.AuthException catch (e) {
       LoggerService.error('loginWithGoogle failed', e);
-      // Pasar el mensaje real del error
-      String mensajeError = e.toString().replaceFirst('Exception: ', '');
-      return Left(AuthenticationFailure(mensajeError));
+      return Left(AuthenticationFailure(e.message));
+    } on app_exceptions.NetworkException catch (e) {
+      LoggerService.error('loginWithGoogle failed - network', e);
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      LoggerService.error('loginWithGoogle failed - unexpected', e);
+      return Left(ServerFailure('Error inesperado en login con Google'));
     }
   }
 
@@ -61,11 +70,15 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       LoggerService.endOperation('signUp');
       return Right(user);
-    } catch (e) {
+    } on app_exceptions.AuthException catch (e) {
       LoggerService.error('signUp failed', e);
-      // Pasar el mensaje real del error
-      String mensajeError = e.toString().replaceFirst('Exception: ', '');
-      return Left(AuthenticationFailure(mensajeError));
+      return Left(AuthenticationFailure(e.message));
+    } on app_exceptions.NetworkException catch (e) {
+      LoggerService.error('signUp failed - network', e);
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      LoggerService.error('signUp failed - unexpected', e);
+      return Left(ServerFailure('Error inesperado al registrarse'));
     }
   }
 
@@ -76,9 +89,12 @@ class AuthRepositoryImpl implements AuthRepository {
       await remoteDataSource.logout();
       LoggerService.endOperation('logout');
       return const Right(null);
-    } catch (e) {
+    } on app_exceptions.AuthException catch (e) {
       LoggerService.error('logout failed', e);
-      return Left(AuthenticationFailure('Error al cerrar sesión'));
+      return Left(AuthenticationFailure(e.message));
+    } catch (e) {
+      LoggerService.error('logout failed - unexpected', e);
+      return Left(ServerFailure('Error inesperado al cerrar sesión'));
     }
   }
 
@@ -87,9 +103,12 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final user = await remoteDataSource.getCurrentUser();
       return Right(user);
-    } catch (e) {
+    } on app_exceptions.AuthException catch (e) {
       LoggerService.error('getCurrentUser failed', e);
-      return Left(AuthenticationFailure('Error al obtener usuario'));
+      return Left(AuthenticationFailure(e.message));
+    } catch (e) {
+      LoggerService.error('getCurrentUser failed - unexpected', e);
+      return Left(ServerFailure('Error al obtener usuario'));
     }
   }
 

@@ -51,6 +51,7 @@ class UpdateHabitEvent extends HabitsEvent {
   final String? color;
   final String? icon;
   final bool? isActive;
+  final int? dailyGoal;
 
   const UpdateHabitEvent({
     required this.habitId,
@@ -60,10 +61,11 @@ class UpdateHabitEvent extends HabitsEvent {
     this.color,
     this.icon,
     this.isActive,
+    this.dailyGoal,
   });
 
   @override
-  List<Object?> get props => [habitId, name, description, category, color, icon, isActive];
+  List<Object?> get props => [habitId, name, description, category, color, icon, isActive, dailyGoal];
 }
 
 /// Evento para eliminar un hábito

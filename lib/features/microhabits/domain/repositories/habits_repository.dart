@@ -34,6 +34,7 @@ abstract class HabitsRepository {
     String? color,
     String? icon,
     bool? isActive,
+    int? dailyGoal,
   });
 
   /// Elimina un hábito

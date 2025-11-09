@@ -26,6 +26,7 @@ abstract class HabitsRemoteDataSource {
     String? color,
     String? icon,
     bool? isActive,
+    int? dailyGoal,
   });
   Future<void> deleteHabit(String habitId);
   Future<HabitCompletionModel> completeHabit({
@@ -195,6 +196,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
     String? color,
     String? icon,
     bool? isActive,
+    int? dailyGoal,
   }) async {
     try {
       LoggerService.apiCall('PUT', '/habits/$habitId');
@@ -211,6 +213,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
       if (color != null) updateData['color'] = color;
       if (icon != null) updateData['icon'] = icon;
       if (isActive != null) updateData['is_active'] = isActive;
+      if (dailyGoal != null) updateData['daily_goal'] = dailyGoal;
 
       final response = await supabaseClient
           .from('habits')

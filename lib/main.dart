@@ -60,9 +60,10 @@ class _MyAppState extends State<MyApp> {
     return BlocProvider<AuthBloc>(
       create: (context) => di.sl<AuthBloc>()..add(const AuthCheckRequested()),
       child: MaterialApp(
-        title: 'MicroHabits AI',
+        title: 'MicroHabits IA',
         navigatorKey: _navigatorKey,
-        theme: AppTheme.lightTheme,
+        theme: AppTheme.darkTheme,
+        debugShowCheckedModeBanner: false,
         home: const AuthWrapper(
           authenticatedWidget: HomePage(),
           showOnboarding: true,

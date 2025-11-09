@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger_service.dart';
+import '../../../../core/errors/exceptions.dart' as app_exceptions;
 import '../models/user_model.dart';
 
 abstract class AuthRemoteDataSource {
@@ -49,18 +50,18 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
 
       if (response.user == null) {
-        throw Exception('Usuario no encontrado');
+        throw const app_exceptions.UserNotFoundException();
       }
 
       LoggerService.auth('Login exitoso: $email');
       return UserModel.fromJson(response.user!.toJson());
     } on AuthApiException catch (e) {
-      String mensajeError = _obtenerMensajeError(e.message);
-      LoggerService.error('Error en login con email: $mensajeError', e);
-      throw Exception(mensajeError);
+      LoggerService.error('Error en login con email', e);
+      throw app_exceptions.ExceptionMapper.mapSupabaseError(e.message ?? e.toString());
     } catch (e) {
       LoggerService.error('Error en login con email', e);
-      rethrow;
+      if (e is app_exceptions.AppException) rethrow;
+      throw app_exceptions.ServerException('Error al iniciar sesión', originalError: e);
     }
   }
 
@@ -99,17 +100,15 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
           const Duration(seconds: 30),
           onTimeout: () {
             sessionSubscription.cancel();
-            throw Exception('❌ Tiempo de espera agotado. Intenta de nuevo.');
+            throw const app_exceptions.TimeoutException();
           },
         );
 
         return result;
       } catch (e) {
         sessionSubscription.cancel();
-        if (e.toString().contains('Tiempo de espera agotado')) {
-          rethrow;
-        }
-        throw Exception('❌ Cancelaste el login con Google. Intenta de nuevo.');
+        if (e is app_exceptions.AppException) rethrow;
+        throw app_exceptions.AuthException('Error en login con Google', originalError: e);
       }
     } catch (e) {
       LoggerService.error('Error en login con Google', e);
@@ -135,7 +134,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
 
       if (response.user == null) {
-        throw Exception('Error al crear el usuario');
+        throw const app_exceptions.ServerException('Error al crear el usuario');
       }
 
       LoggerService.auth('Registro exitoso: $email');
@@ -150,14 +149,18 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       );
 
       if (loginResponse.user == null) {
-        throw Exception('Error al auto-loguear después del registro');
+        throw const app_exceptions.ServerException('Error al auto-loguear después del registro');
       }
 
       LoggerService.auth('Auto-login exitoso: $email');
       return UserModel.fromJson(loginResponse.user!.toJson());
+    } on AuthApiException catch (e) {
+      LoggerService.error('Error en registro', e);
+      throw app_exceptions.ExceptionMapper.mapSupabaseError(e.message ?? e.toString());
     } catch (e) {
       LoggerService.error('Error en registro', e);
-      rethrow;
+      if (e is app_exceptions.AppException) rethrow;
+      throw app_exceptions.ServerException('Error al registrarse', originalError: e);
     }
   }
 
@@ -169,7 +172,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       LoggerService.auth('Sesión cerrada');
     } catch (e) {
       LoggerService.error('Error al cerrar sesión', e);
-      rethrow;
+      if (e is app_exceptions.AppException) rethrow;
+      throw app_exceptions.ServerException('Error al cerrar sesión', originalError: e);
     }
   }
 
@@ -198,38 +202,5 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     }
   }
 
-  /// Obtiene un mensaje de error amigable basado en el error de Supabase
-  String _obtenerMensajeError(String? mensaje) {
-    if (mensaje == null) return 'Error desconocido. Intenta de nuevo.';
-
-    // Errores de autenticación
-    if (mensaje.contains('Invalid login credentials')) {
-      return '❌ Contraseña incorrecta. Verifica tus credenciales.';
-    }
-    if (mensaje.contains('Email not confirmed')) {
-      return '📧 Por favor confirma tu email antes de iniciar sesión.';
-    }
-    if (mensaje.contains('User not found')) {
-      return '👤 Esta cuenta no existe. ¿Quieres registrarte?';
-    }
-    if (mensaje.contains('Email already exists')) {
-      return '📧 Este email ya está registrado. Intenta iniciar sesión.';
-    }
-    if (mensaje.contains('Password should be at least')) {
-      return '🔐 La contraseña debe tener al menos 8 caracteres.';
-    }
-    if (mensaje.contains('Invalid email')) {
-      return '✉️ El formato del email no es válido.';
-    }
-    if (mensaje.contains('over_email_send_rate_limit')) {
-      return '⏱️ Demasiados intentos. Espera unos minutos e intenta de nuevo.';
-    }
-    if (mensaje.contains('Network error')) {
-      return '🌐 Error de conexión. Verifica tu internet.';
-    }
-
-    // Error genérico
-    return '⚠️ Error: ${mensaje.substring(0, mensaje.length > 50 ? 50 : mensaje.length)}';
-  }
 
 }

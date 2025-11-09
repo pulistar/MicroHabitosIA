@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../authentication/presentation/bloc/auth_bloc.dart';
 import '../../../microhabits/presentation/pages/create_habit_page.dart';
 import '../../../microhabits/presentation/pages/habits_page.dart';
+import '../../../ranking/presentation/pages/ranking_page.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../injection/injection.dart';
@@ -236,6 +237,14 @@ class HomeView extends StatelessWidget {
   }
 
   Widget _buildWeeklyProgress(weeklyProgress) {
+    // Obtener el día actual (0 = Lunes, 6 = Domingo)
+    final today = DateTime.now();
+    final currentDayIndex = (today.weekday - 1) % 7; // Convertir a índice 0-6
+    
+    // Debug: Log del día actual
+    final dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    print('📅 Hoy es: ${dayNames[currentDayIndex]} (índice: $currentDayIndex, weekday: ${today.weekday})');
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -257,12 +266,15 @@ class HomeView extends StatelessWidget {
             children: List.generate(7, (index) {
               final days = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
               final completions = weeklyProgress.dailyCompletions[index];
+              final isToday = index == currentDayIndex;
+              
               return Column(
                 children: [
                   Text(
                     days[index],
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.white70,
+                      color: isToday ? AppColors.accentOrange : AppColors.white70,
+                      fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -272,6 +284,9 @@ class HomeView extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: completions > 0 ? AppColors.accentGreen : AppColors.white30,
                       borderRadius: BorderRadius.circular(8),
+                      border: isToday 
+                          ? Border.all(color: AppColors.accentOrange, width: 2)
+                          : null,
                     ),
                     child: Center(
                       child: Text(
@@ -389,10 +404,10 @@ class HomeView extends StatelessWidget {
               onTap: () => _showComingSoonDialog(context, 'AI Coach'),
             ),
             _buildFeatureCard(
-              icon: Icons.settings,
-              title: 'Configuración',
-              subtitle: 'Ajusta tu perfil',
-              onTap: () => _showComingSoonDialog(context, 'Configuración'),
+              icon: Icons.emoji_events,
+              title: 'Ranking',
+              subtitle: 'Ver clasificación',
+              onTap: () => _navigateToRanking(context),
             ),
           ],
         ),
@@ -490,6 +505,17 @@ class HomeView extends StatelessWidget {
       ),
     ).then((_) {
       // Refrescar el dashboard cuando regrese de la lista de hábitos
+      context.read<HomeBloc>().add(const RefreshDashboardEvent());
+    });
+  }
+
+  void _navigateToRanking(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const RankingPage(),
+      ),
+    ).then((_) {
+      // Refrescar el dashboard cuando regrese del ranking
       context.read<HomeBloc>().add(const RefreshDashboardEvent());
     });
   }

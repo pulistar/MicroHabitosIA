@@ -76,6 +76,7 @@ class HabitsRepositoryImpl implements HabitsRepository {
     String? color,
     String? icon,
     bool? isActive,
+    int? dailyGoal,
   }) async {
     try {
       LoggerService.startOperation('updateHabit');
@@ -87,6 +88,7 @@ class HabitsRepositoryImpl implements HabitsRepository {
         color: color,
         icon: icon,
         isActive: isActive,
+        dailyGoal: dailyGoal,
       );
       LoggerService.endOperation('updateHabit');
       return Right(habit);

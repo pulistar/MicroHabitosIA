@@ -56,29 +56,49 @@ class _HabitsViewState extends State<HabitsView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mis Hábitos'),
-        actions: [
-          IconButton(
-            onPressed: () {
-              context.read<HabitsBloc>().add(const RefreshHabitsEvent());
-            },
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refrescar',
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: AppColors.primaryGradient,
-          ),
+    return BlocListener<HabitsBloc, HabitsState>(
+      listener: (context, state) {
+        if (state is HabitDeleted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Hábito eliminado exitosamente'),
+              backgroundColor: AppColors.accentGreen,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else if (state is HabitUpdated) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Hábito "${state.habit.name}" actualizado'),
+              backgroundColor: AppColors.accentGreen,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Mis Hábitos'),
+          actions: [
+            IconButton(
+              onPressed: () {
+                context.read<HabitsBloc>().add(const RefreshHabitsEvent());
+              },
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refrescar',
+            ),
+          ],
         ),
-        child: SafeArea(
-          child: BlocBuilder<HabitsBloc, HabitsState>(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: AppColors.primaryGradient,
+            ),
+          ),
+          child: SafeArea(
+            child: BlocBuilder<HabitsBloc, HabitsState>(
             builder: (context, state) {
               // Manejar TODOS los estados de loading/processing
               if (_isLoadingState(state)) {
@@ -161,6 +181,7 @@ class _HabitsViewState extends State<HabitsView> {
         backgroundColor: AppColors.accentGreen,
         child: const Icon(Icons.add, color: AppColors.white),
       ),
+    ),
     );
   }
 
@@ -814,10 +835,10 @@ class _HabitsViewState extends State<HabitsView> {
 
   HabitsLoaded _getLoadedStateFromState(HabitsState state) {
     if (state is HabitsLoaded) return state;
-    // Para otros estados, crear un HabitsLoaded temporal con progreso vacío
-    if (state is HabitCreated) return HabitsLoaded(habits: state.allHabits, categories: state.categories);
-    if (state is HabitUpdated) return HabitsLoaded(habits: state.allHabits, categories: state.categories);
-    if (state is HabitDeleted) return HabitsLoaded(habits: state.allHabits, categories: state.categories);
+    // Para otros estados, crear un HabitsLoaded temporal
+    if (state is HabitCreated) return HabitsLoaded(habits: state.allHabits, categories: state.categories, temporaryProgress: state.temporaryProgress);
+    if (state is HabitUpdated) return HabitsLoaded(habits: state.allHabits, categories: state.categories, temporaryProgress: state.temporaryProgress);
+    if (state is HabitDeleted) return HabitsLoaded(habits: state.allHabits, categories: state.categories, temporaryProgress: state.temporaryProgress);
     if (state is HabitCompleted) return HabitsLoaded(habits: state.allHabits, categories: state.categories);
     if (state is HabitUncompleted) return HabitsLoaded(habits: state.allHabits, categories: state.categories);
     return const HabitsLoaded(habits: [], categories: []);

@@ -84,15 +84,17 @@ class HabitCreated extends HabitsState {
   final HabitEntity habit;
   final List<HabitEntity> allHabits;
   final List<HabitCategoryEntity> categories;
+  final Map<String, int> temporaryProgress;
 
   const HabitCreated({
     required this.habit,
     required this.allHabits,
     required this.categories,
+    this.temporaryProgress = const {},
   });
 
   @override
-  List<Object?> get props => [habit, allHabits, categories];
+  List<Object?> get props => [habit, allHabits, categories, temporaryProgress];
 }
 
 /// Estado de actualización de hábito en progreso
@@ -105,15 +107,17 @@ class HabitUpdated extends HabitsState {
   final HabitEntity habit;
   final List<HabitEntity> allHabits;
   final List<HabitCategoryEntity> categories;
+  final Map<String, int> temporaryProgress;
 
   const HabitUpdated({
     required this.habit,
     required this.allHabits,
     required this.categories,
+    this.temporaryProgress = const {},
   });
 
   @override
-  List<Object?> get props => [habit, allHabits, categories];
+  List<Object?> get props => [habit, allHabits, categories, temporaryProgress];
 }
 
 /// Estado de eliminación de hábito en progreso
@@ -126,15 +130,17 @@ class HabitDeleted extends HabitsState {
   final String habitId;
   final List<HabitEntity> allHabits;
   final List<HabitCategoryEntity> categories;
+  final Map<String, int> temporaryProgress;
 
   const HabitDeleted({
     required this.habitId,
     required this.allHabits,
     required this.categories,
+    this.temporaryProgress = const {},
   });
 
   @override
-  List<Object?> get props => [habitId, allHabits, categories];
+  List<Object?> get props => [habitId, allHabits, categories, temporaryProgress];
 }
 
 // ==================== COMPLETION STATES ====================

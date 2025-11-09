@@ -134,12 +134,19 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
       
       LoggerService.info('🏠 REAL DATA: Completados hoy: $completedToday');
 
-      // 3. Calcular progreso semanal
+      // 3. Calcular progreso semanal (Lunes a Domingo)
       final weeklyCompletions = <int>[];
       int totalWeekCompletions = 0;
       
-      for (int i = 6; i >= 0; i--) {
-        final date = today.subtract(Duration(days: i));
+      // Calcular el inicio de la semana (Lunes)
+      final currentWeekday = today.weekday; // 1 = Lunes, 7 = Domingo
+      final daysFromMonday = currentWeekday - 1; // 0 si es Lunes, 6 si es Domingo
+      final monday = today.subtract(Duration(days: daysFromMonday));
+      final mondayStart = DateTime(monday.year, monday.month, monday.day);
+      
+      // Obtener completitudes para cada día de Lunes a Domingo
+      for (int i = 0; i < 7; i++) {
+        final date = mondayStart.add(Duration(days: i));
         final dayStart = DateTime(date.year, date.month, date.day);
         final dayEnd = dayStart.add(const Duration(days: 1));
 
@@ -154,6 +161,8 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
         weeklyCompletions.add(dayCount);
         totalWeekCompletions += dayCount;
       }
+      
+      LoggerService.info('📅 Progreso semanal (L-D): $weeklyCompletions');
 
       // 4. Calcular estadísticas generales
       final allCompletionsResponse = await supabaseClient

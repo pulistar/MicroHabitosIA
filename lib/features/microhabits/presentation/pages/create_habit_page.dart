@@ -105,53 +105,78 @@ class _CreateHabitViewState extends State<CreateHabitView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.habitToEdit != null ? 'Editar Hábito' : 'Crear Hábito'),
-        actions: [
-          BlocConsumer<HabitsBloc, HabitsState>(
-            listener: (context, state) {
-              if (state is HabitCreated) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Hábito "${state.habit.name}" creado exitosamente'),
-                    backgroundColor: AppColors.accentGreen,
-                  ),
+    return BlocListener<HabitsBloc, HabitsState>(
+      listenWhen: (previous, current) {
+        // Solo escuchar cuando cambia a estos estados específicos
+        return current is HabitCreated || 
+               current is HabitUpdated || 
+               current is HabitsError;
+      },
+      listener: (context, state) {
+        print('🔔 CreateHabitPage - Estado recibido: ${state.runtimeType}');
+        
+        if (state is HabitCreated) {
+          print('✅ Hábito creado, cerrando pantalla...');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Hábito "${state.habit.name}" creado exitosamente'),
+              backgroundColor: AppColors.accentGreen,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          // Usar Future.delayed para asegurar que el SnackBar se muestre
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (context.mounted) {
+              Navigator.of(context).pop(true);
+            }
+          });
+        } else if (state is HabitUpdated) {
+          print('✅ Hábito actualizado, cerrando pantalla...');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Hábito "${state.habit.name}" actualizado exitosamente'),
+              backgroundColor: AppColors.accentGreen,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          // Usar Future.delayed para asegurar que el SnackBar se muestre
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (context.mounted) {
+              Navigator.of(context).pop(true);
+            }
+          });
+        } else if (state is HabitsError) {
+          print('❌ Error: ${state.message}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${state.message}'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.habitToEdit != null ? 'Editar Hábito' : 'Crear Hábito'),
+          actions: [
+            BlocBuilder<HabitsBloc, HabitsState>(
+              builder: (context, state) {
+                final isProcessing = state is HabitCreating || state is HabitUpdating;
+                return TextButton(
+                  onPressed: isProcessing ? null : _saveHabit,
+                  child: isProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Guardar'),
                 );
-                Navigator.of(context).pop();
-              } else if (state is HabitUpdated) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Hábito "${state.habit.name}" actualizado exitosamente'),
-                    backgroundColor: AppColors.accentGreen,
-                  ),
-                );
-                Navigator.of(context).pop(true); // Indicar que se actualizó
-              } else if (state is HabitsError) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error: ${state.message}'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
-            },
-            builder: (context, state) {
-              final isCreating = state is HabitCreating;
-              return TextButton(
-                onPressed: isCreating ? null : _saveHabit,
-                child: isCreating
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Guardar'),
-              );
-            },
-          ),
-        ],
-      ),
+              },
+            ),
+          ],
+        ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -234,6 +259,7 @@ class _CreateHabitViewState extends State<CreateHabitView> {
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -499,6 +525,7 @@ class _CreateHabitViewState extends State<CreateHabitView> {
             color: _selectedColor,
             icon: _selectedIcon,
             isActive: true, // Mantener activo al editar
+            dailyGoal: _dailyGoal,
           ),
         );
       } else {
