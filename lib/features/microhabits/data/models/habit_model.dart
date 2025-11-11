@@ -98,4 +98,46 @@ class HabitModel extends HabitEntity {
       completedToday: completedToday ?? this.completedToday,
     );
   }
+
+  /// Convierte HabitEntity a HabitModel
+  factory HabitModel.fromEntity(HabitEntity entity) {
+    return HabitModel(
+      id: entity.id,
+      userId: entity.userId,
+      name: entity.name,
+      description: entity.description,
+      category: entity.category,
+      color: entity.color,
+      icon: entity.icon,
+      isActive: entity.isActive,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+      currentStreak: entity.currentStreak,
+      longestStreak: entity.longestStreak,
+      totalCompletions: entity.totalCompletions,
+      dailyGoal: entity.dailyGoal,
+      completedToday: entity.completedToday,
+    );
+  }
+
+  /// Convierte HabitModel a HabitEntity
+  HabitEntity toEntity() {
+    return HabitEntity(
+      id: id,
+      userId: userId,
+      name: name,
+      description: description,
+      category: category,
+      color: color,
+      icon: icon,
+      isActive: isActive,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      currentStreak: currentStreak,
+      longestStreak: longestStreak,
+      totalCompletions: totalCompletions,
+      dailyGoal: dailyGoal,
+      completedToday: completedToday,
+    );
+  }
 }

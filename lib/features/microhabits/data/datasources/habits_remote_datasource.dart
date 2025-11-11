@@ -109,7 +109,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
         habits.add(HabitModel.fromJson(habitWithCompletions));
       }
       
-      LoggerService.info('Hábitos obtenidos: ${habits.length}');
+      LoggerService.info('✅ ${habits.length} hábitos obtenidos de Supabase');
       return habits;
     } catch (e) {
       LoggerService.error('Error al obtener hábitos: $e');
@@ -178,8 +178,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
           .single();
 
       final newHabit = HabitModel.fromJson(response);
-      
-      LoggerService.info('Hábito creado: ${newHabit.name}');
+      LoggerService.info('✅ Hábito creado: ${newHabit.name}');
       return newHabit;
     } catch (e) {
       LoggerService.error('Error al crear hábito: $e');
@@ -223,6 +222,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
           .select()
           .single();
 
+      LoggerService.info('✅ Hábito actualizado');
       return HabitModel.fromJson(response);
     } catch (e) {
       LoggerService.error('Error al actualizar hábito: $e');
@@ -246,7 +246,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
           .eq('id', habitId)
           .eq('user_id', user.id);
 
-      LoggerService.info('Hábito eliminado: $habitId');
+      LoggerService.info('✅ Hábito eliminado');
     } catch (e) {
       LoggerService.error('Error al eliminar hábito: $e');
       rethrow;
@@ -280,6 +280,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
       // Actualizar estadísticas del hábito
       await _updateHabitStats(habitId);
 
+      LoggerService.info('✅ Hábito completado');
       return HabitCompletionModel.fromJson(response);
     } catch (e) {
       LoggerService.error('Error al completar hábito: $e');
@@ -313,7 +314,7 @@ class HabitsRemoteDataSourceImpl implements HabitsRemoteDataSource {
       // Actualizar estadísticas del hábito
       await _updateHabitStats(habitId);
 
-      LoggerService.info('Hábito descompletado: $habitId');
+      LoggerService.info('✅ Hábito descompletado');
     } catch (e) {
       LoggerService.error('Error al descompletar hábito: $e');
       rethrow;

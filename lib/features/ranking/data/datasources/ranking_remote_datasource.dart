@@ -72,8 +72,8 @@ class RankingRemoteDataSourceImpl implements RankingRemoteDataSource {
         }
       }
 
-      // Obtener información adicional de cada usuario (racha y total)
-      final Map<String, Map<String, int>> userStats = {};
+      // Obtener información adicional de cada usuario (racha, total y nombre)
+      final Map<String, Map<String, dynamic>> userStats = {};
       for (var userId in userCompletions.keys) {
         // Obtener hábitos del usuario para calcular estadísticas
         final habitsResponse = await supabaseClient
@@ -91,10 +91,39 @@ class RankingRemoteDataSourceImpl implements RankingRemoteDataSource {
           totalCompletions += completions;
         }
 
+        // Obtener el nombre del usuario desde user_profiles
+        String displayName = 'Usuario ${userId.substring(0, 8)}';
+        try {
+          final profileResponse = await supabaseClient
+              .from('user_profiles')
+              .select('display_name, email')
+              .eq('id', userId)
+              .maybeSingle();
+          
+          if (profileResponse != null) {
+            // Prioridad: display_name > email (sin @dominio) > ID
+            if (profileResponse['display_name'] != null && 
+                (profileResponse['display_name'] as String).trim().isNotEmpty) {
+              displayName = profileResponse['display_name'] as String;
+            } else if (profileResponse['email'] != null) {
+              // Usar la parte antes del @ del email
+              final email = profileResponse['email'] as String;
+              final username = email.split('@').first;
+              displayName = username;
+            }
+          }
+        } catch (e) {
+          // Si no existe el perfil, usar el ID corto
+          displayName = 'Usuario ${userId.substring(0, 8)}';
+        }
+
         userStats[userId] = {
           'current_streak': maxStreak,
           'total_completions': totalCompletions,
+          'display_name': displayName,
         };
+        
+        LoggerService.info('👤 Usuario ${userId.substring(0, 8)}: "$displayName"');
       }
 
       // Crear lista de usuarios con sus completitudes semanales
@@ -104,12 +133,16 @@ class RankingRemoteDataSourceImpl implements RankingRemoteDataSource {
       for (var entry in userCompletions.entries) {
         final userId = entry.key;
         final weeklyCompletions = entry.value;
-        final stats = userStats[userId] ?? {'current_streak': 0, 'total_completions': 0};
+        final stats = userStats[userId] ?? {
+          'current_streak': 0, 
+          'total_completions': 0,
+          'display_name': 'Usuario ${userId.substring(0, 8)}'
+        };
 
-        // Usar "Tú" para el usuario actual, o primeros caracteres del ID para otros
+        // Usar "Tú" para el usuario actual, o el nombre real del perfil
         final displayName = userId == currentUserId 
             ? 'Tú' 
-            : 'Usuario ${userId.substring(0, 8)}';
+            : (stats['display_name'] as String);
 
         rankingData.add({
           'user_id': userId,

@@ -4,6 +4,9 @@ import '../../../authentication/presentation/bloc/auth_bloc.dart';
 import '../../../microhabits/presentation/pages/create_habit_page.dart';
 import '../../../microhabits/presentation/pages/habits_page.dart';
 import '../../../ranking/presentation/pages/ranking_page.dart';
+import '../../../ai_coach/presentation/pages/ai_coach_page.dart';
+import '../../../ai_coach/presentation/bloc/ai_coach_bloc.dart';
+import '../../../notifications/presentation/pages/notification_settings_page.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../injection/injection.dart';
@@ -32,10 +35,23 @@ class HomeView extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const NotificationSettingsPage(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.notifications_active, color: Colors.white),
+            tooltip: 'Notificaciones',
+          ),
+          IconButton(
             onPressed: () => _showLogoutDialog(context),
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Cerrar sesión',
           ),
         ],
@@ -401,7 +417,7 @@ class HomeView extends StatelessWidget {
               icon: Icons.psychology,
               title: 'AI Coach',
               subtitle: 'Consejos IA',
-              onTap: () => _showComingSoonDialog(context, 'AI Coach'),
+              onTap: () => _navigateToAiCoach(context),
             ),
             _buildFeatureCard(
               icon: Icons.emoji_events,
@@ -518,6 +534,17 @@ class HomeView extends StatelessWidget {
       // Refrescar el dashboard cuando regrese del ranking
       context.read<HomeBloc>().add(const RefreshDashboardEvent());
     });
+  }
+
+  void _navigateToAiCoach(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BlocProvider(
+          create: (context) => sl<AiCoachBloc>(),
+          child: const AiCoachPage(),
+        ),
+      ),
+    );
   }
 
   void _showComingSoonDialog(BuildContext context, String feature) {

@@ -1,5 +1,9 @@
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/local_storage/hive_service.dart';
+import '../core/local_storage/preferences_service.dart';
+import '../core/local_storage/sync_service.dart';
 import '../features/authentication/domain/usecases/get_onboarding_items.dart';
 import '../features/authentication/presentation/bloc/onboarding_bloc.dart';
 import '../features/authentication/domain/usecases/login_with_email_usecase.dart';
@@ -40,12 +44,43 @@ import '../features/ranking/data/datasources/ranking_remote_datasource.dart';
 import '../features/ranking/data/repositories/ranking_repository_impl.dart';
 import '../features/ranking/domain/repositories/ranking_repository.dart';
 
+// AI Coach imports
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../features/ai_coach/domain/usecases/send_message_usecase.dart';
+import '../features/ai_coach/domain/usecases/analyze_progress_usecase.dart';
+import '../features/ai_coach/domain/usecases/get_suggestions_usecase.dart';
+import '../features/ai_coach/presentation/bloc/ai_coach_bloc.dart';
+import '../features/ai_coach/data/datasources/ai_coach_remote_datasource.dart';
+import '../features/ai_coach/data/repositories/ai_coach_repository_impl.dart';
+import '../features/ai_coach/domain/repositories/ai_coach_repository.dart';
+
+// Notifications imports
+import '../core/notifications/notification_service.dart';
+import '../core/notifications/ai_notification_service.dart';
+import '../features/notifications/presentation/bloc/notification_bloc.dart';
+
 final sl = GetIt.instance;
 
 // Alias para compatibilidad
 final getIt = sl;
 
 Future<void> init() async {
+  // ==================== LOCAL STORAGE ====================
+  // Inicializar Hive
+  await HiveService.init();
+  sl.registerLazySingleton<HiveService>(() => HiveService());
+
+  // Inicializar SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  sl.registerLazySingleton<PreferencesService>(() => PreferencesService(prefs));
+
+  // Inicializar SyncService
+  sl.registerLazySingleton<SyncService>(
+    () => SyncService(sl<HiveService>(), sl<PreferencesService>()),
+  );
+  await sl<SyncService>().init();
+
   // ==================== SUPABASE ====================
   final supabaseClient = Supabase.instance.client;
   sl.registerSingleton<SupabaseClient>(supabaseClient);
@@ -56,15 +91,37 @@ Future<void> init() async {
   );
 
   sl.registerLazySingleton<HomeRemoteDataSource>(
-    () => HomeRemoteDataSourceImpl(supabaseClient: sl<SupabaseClient>()),
+    () => HomeRemoteDataSourceImpl(
+      supabaseClient: sl<SupabaseClient>(),
+    ),
   );
 
   sl.registerLazySingleton<HabitsRemoteDataSource>(
-    () => HabitsRemoteDataSourceImpl(supabaseClient: sl<SupabaseClient>()),
+    () => HabitsRemoteDataSourceImpl(
+      supabaseClient: sl<SupabaseClient>(),
+    ),
   );
 
   sl.registerLazySingleton<RankingRemoteDataSource>(
     () => RankingRemoteDataSourceImpl(sl<SupabaseClient>()),
+  );
+
+  // AI Coach - Gemini AI
+  final geminiApiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+  final geminiModel = GenerativeModel(
+    model: 'gemini-flash-latest',
+    apiKey: geminiApiKey,
+  );
+  sl.registerSingleton<GenerativeModel>(geminiModel);
+
+  sl.registerLazySingleton<AiCoachRemoteDataSource>(
+    () => AiCoachRemoteDataSourceImpl(model: sl<GenerativeModel>()),
+  );
+
+  // Notifications
+  sl.registerLazySingleton<NotificationService>(() => NotificationService());
+  sl.registerLazySingleton<AiNotificationService>(
+    () => AiNotificationService(model: sl<GenerativeModel>()),
   );
 
   // ==================== REPOSITORIES ====================
@@ -82,6 +139,10 @@ Future<void> init() async {
 
   sl.registerLazySingleton<RankingRepository>(
     () => RankingRepositoryImpl(sl<RankingRemoteDataSource>()),
+  );
+
+  sl.registerLazySingleton<AiCoachRepository>(
+    () => AiCoachRepositoryImpl(remoteDataSource: sl<AiCoachRemoteDataSource>()),
   );
 
   // ==================== USE CASES ====================
@@ -109,6 +170,11 @@ Future<void> init() async {
 
   // Ranking
   sl.registerLazySingleton(() => GetWeeklyRankingUseCase(sl<RankingRepository>()));
+
+  // AI Coach
+  sl.registerLazySingleton(() => SendMessageUseCase(sl<AiCoachRepository>()));
+  sl.registerLazySingleton(() => AnalyzeProgressUseCase(sl<AiCoachRepository>()));
+  sl.registerLazySingleton(() => GetSuggestionsUseCase(sl<AiCoachRepository>()));
 
   // ==================== BLOCS ====================
   sl.registerFactory(() => OnboardingBloc(
@@ -143,5 +209,20 @@ Future<void> init() async {
 
   sl.registerFactory(() => RankingBloc(
     getWeeklyRankingUseCase: sl(),
+  ));
+
+  sl.registerFactory(() => AiCoachBloc(
+    sendMessageUseCase: sl(),
+    analyzeProgressUseCase: sl(),
+    getSuggestionsUseCase: sl(),
+    homeRepository: sl(),
+    habitsRepository: sl(),
+    rankingRepository: sl(),
+  ));
+
+  sl.registerFactory(() => NotificationBloc(
+    notificationService: sl(),
+    aiNotificationService: sl(),
+    homeRepository: sl(),
   ));
 }

@@ -30,33 +30,36 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
         throw Exception('Usuario no autenticado');
       }
 
-      // Obtener estadísticas reales de Supabase
-      
-      // 1. Obtener total de hábitos
-      final habitsResponse = await supabaseClient
-          .from('habits')
-          .select('id, current_streak, longest_streak')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
-
-      final habits = habitsResponse as List;
-      final totalHabits = habits.length;
-      
-      // 2. Obtener completitudes de hoy
+      // Obtener estadísticas reales de Supabase - OPTIMIZADO CON CONSULTAS PARALELAS
       final today = DateTime.now();
       final startOfDay = DateTime(today.year, today.month, today.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final todayCompletionsResponse = await supabaseClient
-          .from('habit_completions')
-          .select('id')
-          .eq('user_id', user.id)
-          .gte('completed_at', startOfDay.toIso8601String())
-          .lt('completed_at', endOfDay.toIso8601String());
-
-      final completedToday = (todayCompletionsResponse as List).length;
       
-      // 3. Calcular rachas
+      // Ejecutar consultas en paralelo
+      final results = await Future.wait([
+        // 0. Hábitos con rachas
+        supabaseClient
+            .from('habits')
+            .select('id, current_streak, longest_streak')
+            .eq('user_id', user.id)
+            .eq('is_active', true),
+        
+        // 1. Completitudes de hoy
+        supabaseClient
+            .from('habit_completions')
+            .select('id')
+            .eq('user_id', user.id)
+            .gte('completed_at', startOfDay.toIso8601String())
+            .lt('completed_at', endOfDay.toIso8601String()),
+      ]);
+      
+      final habits = results[0] as List;
+      final todayCompletions = results[1] as List;
+      
+      final totalHabits = habits.length;
+      final completedToday = todayCompletions.length;
+      
+      // Calcular rachas
       final currentStreak = habits.fold<int>(
         0, 
         (max, habit) => math.max(max, habit['current_streak'] as int? ?? 0)
@@ -67,9 +70,9 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
         (max, habit) => math.max(max, habit['longest_streak'] as int? ?? 0)
       );
 
-      LoggerService.info('🏠 USER PROFILE REAL: Total=$totalHabits, Completados=$completedToday');
+      LoggerService.info('✅ Perfil obtenido: Total=$totalHabits, Completados=$completedToday');
 
-      final realProfile = UserProfileModel(
+      return UserProfileModel(
         id: user.id,
         email: user.email ?? 'usuario@ejemplo.com',
         displayName: user.userMetadata?['display_name'] as String? ?? 
@@ -78,14 +81,11 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
         photoUrl: user.userMetadata?['avatar_url'] as String?,
         isEmailVerified: user.emailConfirmedAt != null,
         createdAt: DateTime.parse(user.createdAt),
-        totalHabits: totalHabits, // Real data
-        completedToday: completedToday, // Real data
-        currentStreak: currentStreak, // Real data
-        longestStreak: longestStreak, // Real data
+        totalHabits: totalHabits,
+        completedToday: completedToday,
+        currentStreak: currentStreak,
+        longestStreak: longestStreak,
       );
-
-      LoggerService.info('Perfil de usuario obtenido: ${realProfile.email}');
-      return realProfile;
     } catch (e) {
       LoggerService.error('Error al obtener perfil de usuario: $e');
       rethrow;
@@ -102,75 +102,80 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
         throw Exception('Usuario no autenticado');
       }
 
-      // Obtener datos reales de Supabase
-      
-      // 1. Obtener hábitos del usuario
-      final habitsResponse = await supabaseClient
+      // Obtener datos reales de Supabase - OPTIMIZADO CON CONSULTAS PARALELAS
+    
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    
+    // Calcular el inicio de la semana (Lunes)
+    final currentWeekday = today.weekday;
+    final daysFromMonday = currentWeekday - 1;
+    final monday = today.subtract(Duration(days: daysFromMonday));
+    final mondayStart = DateTime(monday.year, monday.month, monday.day);
+    final sundayEnd = mondayStart.add(const Duration(days: 7));
+    
+    // Ejecutar TODAS las consultas en PARALELO para máxima velocidad
+    final results = await Future.wait([
+      // 0. Hábitos del usuario
+      supabaseClient
           .from('habits')
           .select()
           .eq('user_id', user.id)
           .eq('is_active', true)
-          .order('created_at', ascending: false);
-
-      final habits = habitsResponse as List;
-      final totalHabits = habits.length;
+          .order('created_at', ascending: false),
       
-      LoggerService.info('🏠 REAL DATA: Total hábitos encontrados: $totalHabits');
-
-      // 2. Obtener completitudes de hoy
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = startOfDay.add(const Duration(days: 1));
-
-      final todayCompletionsResponse = await supabaseClient
+      // 1. Completitudes de hoy
+      supabaseClient
           .from('habit_completions')
           .select('habit_id')
           .eq('user_id', user.id)
           .gte('completed_at', startOfDay.toIso8601String())
-          .lt('completed_at', endOfDay.toIso8601String());
-
-      final todayCompletions = (todayCompletionsResponse as List);
-      final completedToday = todayCompletions.length;
+          .lt('completed_at', endOfDay.toIso8601String()),
       
-      LoggerService.info('🏠 REAL DATA: Completados hoy: $completedToday');
-
-      // 3. Calcular progreso semanal (Lunes a Domingo)
-      final weeklyCompletions = <int>[];
-      int totalWeekCompletions = 0;
+      // 2. Completitudes de la semana
+      supabaseClient
+          .from('habit_completions')
+          .select('completed_at')
+          .eq('user_id', user.id)
+          .gte('completed_at', mondayStart.toIso8601String())
+          .lt('completed_at', sundayEnd.toIso8601String()),
       
-      // Calcular el inicio de la semana (Lunes)
-      final currentWeekday = today.weekday; // 1 = Lunes, 7 = Domingo
-      final daysFromMonday = currentWeekday - 1; // 0 si es Lunes, 6 si es Domingo
-      final monday = today.subtract(Duration(days: daysFromMonday));
-      final mondayStart = DateTime(monday.year, monday.month, monday.day);
-      
-      // Obtener completitudes para cada día de Lunes a Domingo
-      for (int i = 0; i < 7; i++) {
-        final date = mondayStart.add(Duration(days: i));
-        final dayStart = DateTime(date.year, date.month, date.day);
-        final dayEnd = dayStart.add(const Duration(days: 1));
-
-        final dayCompletionsResponse = await supabaseClient
-            .from('habit_completions')
-            .select('id')
-            .eq('user_id', user.id)
-            .gte('completed_at', dayStart.toIso8601String())
-            .lt('completed_at', dayEnd.toIso8601String());
-
-        final dayCount = (dayCompletionsResponse as List).length;
-        weeklyCompletions.add(dayCount);
-        totalWeekCompletions += dayCount;
-      }
-      
-      LoggerService.info('📅 Progreso semanal (L-D): $weeklyCompletions');
-
-      // 4. Calcular estadísticas generales
-      final allCompletionsResponse = await supabaseClient
+      // 3. Completitudes anteriores a esta semana
+      supabaseClient
           .from('habit_completions')
           .select('id')
-          .eq('user_id', user.id);
-
-      final totalCompletions = (allCompletionsResponse as List).length;
+          .eq('user_id', user.id)
+          .lt('completed_at', mondayStart.toIso8601String()),
+    ]);
+    
+    // Procesar resultados
+    final habits = results[0] as List;
+    final todayCompletions = results[1] as List;
+    final weekCompletions = results[2] as List;
+    final previousCompletions = results[3] as List;
+    
+    final totalHabits = habits.length;
+    final completedToday = todayCompletions.length;
+    
+    LoggerService.info('🏠 REAL DATA: Total hábitos=$totalHabits, Completados hoy=$completedToday');
+    
+    // Agrupar completitudes por día de la semana
+    final weeklyCompletions = List<int>.filled(7, 0);
+    int totalWeekCompletions = 0;
+    
+    for (final completion in weekCompletions) {
+      final completedAt = DateTime.parse(completion['completed_at'] as String);
+      final dayIndex = completedAt.difference(mondayStart).inDays;
+      if (dayIndex >= 0 && dayIndex < 7) {
+        weeklyCompletions[dayIndex]++;
+        totalWeekCompletions++;
+      }
+    }
+    
+    LoggerService.info('📅 Progreso semanal (L-D): $weeklyCompletions');
+    
+    final totalCompletions = previousCompletions.length + totalWeekCompletions;
       
       final longestStreak = habits.fold<int>(
         0, 
@@ -217,8 +222,7 @@ class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
         },
       };
 
-      LoggerService.info('🏠 DASHBOARD FINAL: Total=$totalHabits, Completados=$completedToday');
-      LoggerService.info('Datos del dashboard obtenidos');
+      LoggerService.info('✅ Dashboard obtenido: Total=$totalHabits, Completados=$completedToday');
       return realDashboard;
     } catch (e) {
       LoggerService.error('Error al obtener datos del dashboard: $e');
